@@ -1,12 +1,6 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import type { WordData } from '../types';
-
-if (!process.env.API_KEY) {
-    throw new Error("API_KEY environment variable not set");
-}
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+import { getApiKey } from './cryptoService';
 
 const wordDataSchema = {
     type: Type.OBJECT,
@@ -46,7 +40,16 @@ const wordDataSchema = {
     required: ['definition', 'etymology', 'mnemonic', 'exampleSentences', 'synonyms', 'antonyms', 'imagePrompt']
 };
 
+const getGenAIClient = async (): Promise<GoogleGenAI> => {
+    const apiKey = await getApiKey();
+    if (!apiKey) {
+        throw new Error("API 키가 설정되지 않았습니다. 설정을 열어 API 키를 추가해주세요.");
+    }
+    return new GoogleGenAI({ apiKey });
+};
+
 export const generateWordData = async (word: string): Promise<WordData> => {
+    const ai = await getGenAIClient();
     const prompt = `영어 단어 '${word}'에 대해 암기에 도움이 되도록 상세한 분석을 제공해 주세요. 제공된 스키마를 준수하는 JSON 객체를 생성하세요. 모든 필드가 정확하고 창의적으로 채워지도록 하고, 모든 설명과 내용은 한국어로 작성해주세요.`;
 
     const response = await ai.models.generateContent({
@@ -61,7 +64,6 @@ export const generateWordData = async (word: string): Promise<WordData> => {
     const jsonText = response.text.trim();
     try {
         const parsedData = JSON.parse(jsonText);
-        // Basic validation to ensure the parsed object matches the expected structure
         if (typeof parsedData.definition !== 'string' || !Array.isArray(parsedData.exampleSentences)) {
              throw new Error("Parsed JSON does not match WordData structure");
         }
@@ -73,6 +75,8 @@ export const generateWordData = async (word: string): Promise<WordData> => {
 };
 
 export const generateImage = async (prompt: string): Promise<string> => {
+    const ai = await getGenAIClient();
+    
     const response = await ai.models.generateImages({
         model: 'imagen-4.0-generate-001',
         prompt: prompt,
@@ -88,5 +92,20 @@ export const generateImage = async (prompt: string): Promise<string> => {
         return `data:image/png;base64,${base64ImageBytes}`;
     } else {
         throw new Error("No image was generated.");
+    }
+};
+
+export const testApiKey = async (apiKey: string): Promise<boolean> => {
+    if (!apiKey) return false;
+    try {
+        const ai = new GoogleGenAI({ apiKey });
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: "Hi",
+        });
+        return !!response.text;
+    } catch (error) {
+        console.error("API 키 테스트 실패:", error);
+        return false;
     }
 };
